@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "Захиалга өгөх", robots: 
 async function Checkout({ params }: { params: Promise<{ id: string }> }) {
   await connection();
   const { id } = await params;
-  const door = getDoor(id);
+  const door = await getDoor(id);
   if (!door || door.sample) notFound();
   return <main className="wrap admin-main order-page">
     <Link className="back-link" href={`/doors/${door.id}`}>‹ Барааны дэлгэрэнгүй</Link>

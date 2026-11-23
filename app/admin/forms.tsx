@@ -1,10 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import { categories, doorPhotos, maxDoorPhotoBytes, maxDoorPhotos, type Door } from "@/lib/doors";
+import { categories, doorPhotos, maxDoorPhotoBytes, maxDoorPhotos, maxDoorPhotoSourceBytes, type Door } from "@/lib/doors";
 import { login, removeDoor, submitDoor } from "./actions";
 import { DoorPhoto } from "../door-photo";
 import { Icon } from "../ui";
+import { preparePhotos } from "./prepare-photos";
 
 export function LoginForm() {
   const [error, action, pending] = useActionState(login, "");
@@ -15,9 +16,18 @@ export function LoginForm() {
   </form>;
 }
 
-export function DoorForm({ door }: { door?: Door }) {
-  const [error, action, pending] = useActionState(submitDoor.bind(null, door?.id ?? null), "");
+export function DoorForm({ door, compactUploads }: { door?: Door; compactUploads: boolean }) {
+  const submit = submitDoor.bind(null, door?.id ?? null);
+  const [error, action, pending] = useActionState(compactUploads ? async (state: string, data: FormData) => {
+    try {
+      await preparePhotos(data);
+    } catch {
+      return "Зургийг бэлтгэж чадсангүй. JPG, PNG эсвэл WebP файл сонгоод дахин оролдоно уу.";
+    }
+    return submit(state, data);
+  } : submit, "");
   const photos = door ? doorPhotos(door) : [];
+  const maxBytes = compactUploads ? maxDoorPhotoSourceBytes : maxDoorPhotoBytes;
   return <form className="admin-form" action={action}>
     <div className="form-grid">
       <label>Барааны нэр<input name="title" required maxLength={100} defaultValue={door?.title} /></label>
@@ -36,11 +46,11 @@ export function DoorForm({ door }: { door?: Door }) {
       <label>Холбоо барих утас<input name="phone" type="tel" maxLength={32} defaultValue={door?.phone} /></label>
       <label>Нэмэлт утас<input name="secondPhone" type="tel" maxLength={32} defaultValue={door?.secondPhone} /></label>
       <label className="full">Хаяг<input name="address" maxLength={240} defaultValue={door?.address} /></label>
-      <label className="full">Барааны зургууд <small>Нийт {maxDoorPhotos} хүртэл зураг · JPG, PNG, WebP · Тус бүр 4 МБ хүртэл</small>
+      <label className="full">Барааны зургууд <small>Нийт {maxDoorPhotos} хүртэл зураг · JPG, PNG, WebP · Тус бүр {maxBytes / 1024 ** 2} МБ хүртэл{compactUploads && " · Том зургууд автоматаар шахагдана"}</small>
         <input name="image" type="file" multiple accept="image/png,image/jpeg,image/webp" onChange={(event) => {
           const files = Array.from(event.currentTarget.files ?? []);
           const error = files.length > maxDoorPhotos ? `Нэг бараанд ${maxDoorPhotos} хүртэл зураг оруулна уу.`
-            : files.some((file) => file.size > maxDoorPhotoBytes) ? "Зураг тус бүр 4 МБ хүртэл хэмжээтэй байна." : "";
+            : files.some((file) => file.size > maxBytes) ? `Зураг тус бүр ${maxBytes / 1024 ** 2} МБ хүртэл хэмжээтэй байна.` : "";
           event.currentTarget.setCustomValidity(error);
         }} />
       </label>
@@ -57,7 +67,7 @@ export function DoorForm({ door }: { door?: Door }) {
     </fieldset>}
     {door && <label className="checkbox"><input name="sample" type="checkbox" defaultChecked={door.sample} /> Жишээ бараа гэж тэмдэглэх</label>}
     {error && <p className="form-error" role="alert">{error}</p>}
-    <button className="button primary" type="submit" disabled={pending}><Icon name="check" size={18} /> {pending ? "Хадгалж байна…" : "Хадгалах"}</button>
+    <button className="button primary" type="submit" disabled={pending}><Icon name="check" size={18} /> {pending ? (compactUploads ? "Зургийг бэлтгэж, хадгалж байна…" : "Хадгалж байна…") : "Хадгалах"}</button>
   </form>;
 }
 

@@ -17,7 +17,7 @@ type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ updated?
 async function OrderDetails({ params, searchParams }: Props) {
   if (!await isAdmin()) redirect("/admin");
   const { id } = await params;
-  const order = getOrder(id);
+  const order = await getOrder(id);
   if (!order) notFound();
   const { updated } = await searchParams;
   const total = order.payment?.total ?? order.quotedTotal;

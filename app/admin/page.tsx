@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { adminConfigured, isAdmin } from "@/lib/admin";
 import { currency } from "@/lib/doors";
-import { getDoor, listDoors } from "@/lib/store";
+import { compactDoorUploads, getDoor, listDoors } from "@/lib/store";
 import { DoorPhoto } from "../door-photo";
 import { Header, Icon } from "../ui";
 import { logout } from "./actions";
@@ -25,18 +25,18 @@ async function AdminContent({ searchParams }: { searchParams: Promise<AdminParam
 
   const { edit, new: creating, status } = await searchParams;
   if (edit || creating) {
-    const door = edit ? getDoor(edit) : undefined;
+    const door = edit ? await getDoor(edit) : undefined;
     if (edit && !door) notFound();
     return <main className="wrap admin-main">
       <Link className="back-link" href="/admin">‹  Барааны жагсаалт</Link>
       <div className="admin-panel admin-editor">
         <h1>{door ? "Бараа засах" : "Шинэ бараа бүртгэх"}</h1>
-        <DoorForm key={door?.id ?? "new"} door={door} />
+        <DoorForm key={door?.id ?? "new"} door={door} compactUploads={compactDoorUploads()} />
       </div>
     </main>;
   }
 
-  const doors = listDoors();
+  const doors = await listDoors();
   return <main className="wrap admin-main">
     <div className="admin-heading">
       <div><h1>Барааны бүртгэл</h1><p>{doors.length} бараа</p></div>

@@ -5,7 +5,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ token: st
   const { token } = await params;
   const headers = { "Cache-Control": "no-store" };
   if (!/^[a-f0-9]{48}$/.test(token)) return new Response(null, { status: 404, headers });
-  const order = getOrderByQPayCallback(token);
+  const order = await getOrderByQPayCallback(token);
   if (!order || order.payment?.method !== "qpay") return new Response(null, { status: 404, headers });
   if (order.status === "cancelled") return new Response("SUCCESS", { headers });
 

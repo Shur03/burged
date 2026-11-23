@@ -1,37 +1,53 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { createClient, type Client, type Transaction } from "@libsql/client";
 import { doorPhotos, initialDoors, maxDoorPhotos, type Door } from "./doors";
 
-type DoorRow = { record: string; image: Uint8Array | null; mime: string | null };
-type SqlValue = string | Uint8Array | null;
-type Statement<Row> = {
-  run(...params: SqlValue[]): { changes: number | bigint };
-  get(...params: SqlValue[]): Row | undefined;
-  all(...params: SqlValue[]): Row[];
-};
-type SqliteDatabase = {
-  exec(sql: string): void;
-  prepare<Row = DoorRow>(sql: string): Statement<Row>;
-};
+let database: Promise<Client> | undefined;
+type SqlReader = Pick<Client, "execute">;
 
-let database: SqliteDatabase | undefined;
+export function compactDoorUploads() {
+  return process.env.VERCEL === "1" || Boolean(process.env.TURSO_DATABASE_URL);
+}
 
 export function db() {
-  if (database) return database;
+  database ??= openDatabase().catch((error) => {
+    database = undefined;
+    throw error;
+  });
+  return database;
+}
 
+async function openDatabase() {
+  const url = process.env.TURSO_DATABASE_URL?.trim();
+  const authToken = process.env.TURSO_AUTH_TOKEN?.trim();
+  if (url || authToken || process.env.VERCEL === "1") {
+    if (!url || !authToken) throw new Error("Configure TURSO_DATABASE_URL and TURSO_AUTH_TOKEN for this deployment.");
+    const endpoint = new URL(url.replace(/^libsql:\/\//, "https://"));
+    if (endpoint.protocol !== "https:" || endpoint.username || endpoint.password) {
+      throw new Error("TURSO_DATABASE_URL must be a secure Turso URL.");
+    }
+    const client = createClient({ url: endpoint.href, authToken });
+    try {
+      const { rows } = await client.execute("SELECT id FROM catalog_setup WHERE id = 1");
+      if (!rows.length) throw new Error("Catalog migration marker is missing.");
+      return client;
+    } catch (error) {
+      client.close();
+      if (error instanceof Error && /no such table|marker is missing/i.test(error.message)) {
+        throw new Error("Import the catalog SQLite snapshot into Turso before starting the site.", { cause: error });
+      }
+      throw error;
+    }
+  }
   const directory = resolve(/*turbopackIgnore: true*/ process.env.DOOR_DATA_DIR || ".door-data");
   mkdirSync(directory, { recursive: true });
-  // Node 24 provides SQLite. The project's Node 20 type definitions predate it.
-  const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as {
-    DatabaseSync: new (filename: string) => SqliteDatabase;
-  };
-  const opened = new DatabaseSync(join(directory, "doors.sqlite"));
-  opened.exec("PRAGMA busy_timeout = 5000");
-  opened.exec("PRAGMA foreign_keys = ON");
-  opened.exec("BEGIN IMMEDIATE");
+  const opened = createClient({ url: pathToFileURL(join(directory, "doors.sqlite")).href });
   try {
-    opened.exec(`
+    await inTransaction(opened, async (tx) => {
+      await tx.executeMultiple(`
       CREATE TABLE IF NOT EXISTS doors (
         id TEXT PRIMARY KEY, record TEXT NOT NULL, image BLOB, mime TEXT
       );
@@ -53,52 +69,66 @@ export function db() {
         ON orders (json_extract(record, '$.payment.callbackToken'));
       CREATE UNIQUE INDEX IF NOT EXISTS orders_qpay_invoice
         ON orders (json_extract(record, '$.payment.invoice.id'));
-    `);
-    if (opened.prepare("INSERT OR IGNORE INTO catalog_setup VALUES (1)").run().changes) {
-      const seed = opened.prepare("INSERT INTO doors (id, record) VALUES (?, ?)");
-      for (const door of initialDoors) seed.run(door.id, JSON.stringify(door));
-    }
-    opened.exec("COMMIT");
+      `);
+      if ((await tx.execute("INSERT OR IGNORE INTO catalog_setup VALUES (1)")).rowsAffected) {
+        await tx.batch(initialDoors.map((door) => ({
+          sql: "INSERT INTO doors (id, record) VALUES (?, ?)", args: [door.id, JSON.stringify(door)],
+        })));
+      }
+    });
+    return opened;
   } catch (error) {
-    opened.exec("ROLLBACK");
+    opened.close();
     throw error;
   }
-  database = opened;
-  return opened;
 }
 
-export function listDoors(): Door[] {
-  return db().prepare("SELECT record FROM doors ORDER BY rowid").all()
-    .map(({ record }) => JSON.parse(record) as Door);
-}
-
-export function getDoor(id: string): Door | undefined {
-  const row = db().prepare("SELECT record FROM doors WHERE id = ?").get(id);
-  return row && JSON.parse(row.record) as Door;
-}
-
-export function getDoorImage(id: string, photo: string | null) {
-  if (photo !== null) {
-    return db().prepare("SELECT image, mime FROM door_photos WHERE door_id = ? AND id = ?").get(id, photo);
+async function inTransaction<T>(client: Client, operation: (tx: Transaction) => Promise<T>) {
+  const tx = await client.transaction("write");
+  try {
+    const result = await operation(tx);
+    await tx.commit();
+    return result;
+  } catch (error) {
+    await tx.rollback().catch(() => undefined);
+    throw error;
+  } finally {
+    tx.close();
   }
-  return db().prepare("SELECT image, mime FROM doors WHERE id = ?").get(id);
+}
+
+export async function writeDatabase<T>(operation: (tx: Transaction) => Promise<T>) {
+  return inTransaction(await db(), operation);
+}
+
+export async function listDoors(): Promise<Door[]> {
+  return (await (await db()).execute("SELECT record FROM doors ORDER BY rowid")).rows
+    .map(({ record }) => JSON.parse(String(record)) as Door);
+}
+
+export async function getDoor(id: string, reader?: SqlReader): Promise<Door | undefined> {
+  const { rows: [row] } = await (reader ?? await db()).execute({ sql: "SELECT record FROM doors WHERE id = ?", args: [id] });
+  return row && JSON.parse(String(row.record)) as Door;
+}
+
+export async function getDoorImage(id: string, photo: string | null) {
+  const client = await db();
+  const result = photo === null
+    ? await client.execute("SELECT image, mime FROM doors WHERE id = ?", [id])
+    : await client.execute("SELECT image, mime FROM door_photos WHERE door_id = ? AND id = ?", [id, photo]);
+  const row = result.rows[0];
+  if (row?.image instanceof ArrayBuffer && typeof row.mime === "string") return { image: row.image, mime: row.mime };
 }
 
 type PhotoUpload = { bytes: Uint8Array; mime: string };
 
 export function saveDoor(door: Door, edit: boolean, uploads: PhotoUpload[], removePhotos: Set<string>) {
-  const database = db();
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const current = edit ? getDoor(door.id) : undefined;
-    if (edit && !current) {
-      database.exec("ROLLBACK");
-      return "missing";
-    }
+  return writeDatabase(async (tx) => {
+    const current = edit ? await getDoor(door.id, tx) : undefined;
+    if (edit && !current) return "missing";
     const existing = current ? doorPhotos(current) : [];
     const retained = existing.filter((url) => !removePhotos.has(url));
     if (retained.length + uploads.length > maxDoorPhotos) {
-      database.exec("ROLLBACK");
       return "too-many-photos";
     }
 
@@ -109,28 +139,33 @@ export function saveDoor(door: Door, edit: boolean, uploads: PhotoUpload[], remo
       ...door, images, image: images[0] ?? "",
       illustrative: Boolean(current?.illustrative && retained.some((url) => url.startsWith("/doors/"))),
     });
-    if (edit) database.prepare("UPDATE doors SET record = ? WHERE id = ?").run(record, door.id);
-    else database.prepare("INSERT INTO doors (id, record) VALUES (?, ?)").run(door.id, record);
-
-    const insert = database.prepare("INSERT INTO door_photos (id, door_id, image, mime) VALUES (?, ?, ?, ?)");
-    for (const photo of added) insert.run(photo.id, door.id, photo.bytes, photo.mime);
-
-    const remove = database.prepare("DELETE FROM door_photos WHERE door_id = ? AND id = ?");
+    const statements = [{
+      sql: edit ? "UPDATE doors SET record = ? WHERE id = ?" : "INSERT INTO doors (record, id) VALUES (?, ?)",
+      args: [record, door.id],
+    }];
     for (const url of existing) {
       if (!removePhotos.has(url)) continue;
-      if (url.startsWith(photoPrefix)) remove.run(door.id, url.slice(photoPrefix.length));
+      if (url.startsWith(photoPrefix)) {
+        statements.push({ sql: "DELETE FROM door_photos WHERE door_id = ? AND id = ?", args: [door.id, url.slice(photoPrefix.length)] });
+      }
       else if (url.startsWith(`/door-image/${door.id}?v=`)) {
-        database.prepare("UPDATE doors SET image = NULL, mime = NULL WHERE id = ?").run(door.id);
+        statements.push({ sql: "UPDATE doors SET image = NULL, mime = NULL WHERE id = ?", args: [door.id] });
       }
     }
-    database.exec("COMMIT");
+    await tx.batch(statements);
+    for (const photo of added) {
+      await tx.execute({ sql: "INSERT INTO door_photos (id, door_id, image, mime) VALUES (?, ?, ?, ?)",
+        args: [photo.id, door.id, photo.bytes, photo.mime] });
+    }
     return "saved";
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
 export function deleteDoor(id: string) {
-  db().prepare("DELETE FROM doors WHERE id = ?").run(id);
+  return writeDatabase(async (tx) => {
+    await tx.batch([
+      { sql: "DELETE FROM door_photos WHERE door_id = ?", args: [id] },
+      { sql: "DELETE FROM doors WHERE id = ?", args: [id] },
+    ]);
+  });
 }

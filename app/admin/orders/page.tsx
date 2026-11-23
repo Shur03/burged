@@ -16,7 +16,7 @@ async function Orders({ searchParams }: { searchParams: Promise<{ status?: strin
   if (!await isAdmin()) redirect("/admin");
   const { status } = await searchParams;
   const sandbox = qpaySandboxEnabled();
-  const orders = listOrders().filter((order) => !status || !Object.hasOwn(orderLabels, status) || order.status === status);
+  const orders = (await listOrders()).filter((order) => !status || !Object.hasOwn(orderLabels, status) || order.status === status);
   return <main className="wrap admin-main">
     <div className="admin-heading">
       <div><h1>Захиалгын удирдлага</h1><p>{orders.length} захиалга</p></div>

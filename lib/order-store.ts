@@ -1,8 +1,6 @@
 import { randomBytes } from "node:crypto";
 import type { BankAccount, Order } from "./orders";
-import { db, getDoor } from "./store";
-
-type OrderRecord = { record: string };
+import { db, getDoor, writeDatabase } from "./store";
 
 export function bankAccount(): BankAccount | undefined {
   const name = process.env.DOOR_BANK_NAME?.trim();
@@ -11,19 +9,19 @@ export function bankAccount(): BankAccount | undefined {
   if (account) return { name, account, holder };
 }
 
-export function getOrder(id: string) {
-  const row = db().prepare<OrderRecord>("SELECT record FROM orders WHERE id = ?").get(id);
-  return row ? JSON.parse(row.record) as Order : undefined;
+export async function getOrder(id: string) {
+  const { rows: [row] } = await (await db()).execute("SELECT record FROM orders WHERE id = ?", [id]);
+  return row ? JSON.parse(String(row.record)) as Order : undefined;
 }
 
-export function getOrderByQPayCallback(token: string) {
-  const row = db().prepare<OrderRecord>("SELECT record FROM orders WHERE json_extract(record, '$.payment.callbackToken') = ?").get(token);
-  return row ? JSON.parse(row.record) as Order : undefined;
+export async function getOrderByQPayCallback(token: string) {
+  const { rows: [row] } = await (await db()).execute("SELECT record FROM orders WHERE json_extract(record, '$.payment.callbackToken') = ?", [token]);
+  return row ? JSON.parse(String(row.record)) as Order : undefined;
 }
 
-export function listOrders() {
-  return db().prepare<OrderRecord>("SELECT record FROM orders ORDER BY created_at DESC, rowid DESC").all()
-    .map(({ record }) => JSON.parse(record) as Order);
+export async function listOrders() {
+  return (await (await db()).execute("SELECT record FROM orders ORDER BY created_at DESC, rowid DESC")).rows
+    .map(({ record }) => JSON.parse(String(record)) as Order);
 }
 
 type NewOrder = Pick<Order, "id" | "quantity" | "fulfillment" | "customer"> & {
@@ -35,26 +33,17 @@ export function orderOptions(text: string) {
 }
 
 export function createOrder(input: NewOrder) {
-  const database = db();
-  database.exec("BEGIN IMMEDIATE");
-  try {
-    const prior = getOrder(input.id);
-    if (prior) {
-      database.exec("COMMIT");
-      return prior.id;
-    }
-    const door = getDoor(input.doorId);
+  return writeDatabase(async (tx) => {
+    const prior = await tx.execute({ sql: "SELECT id FROM orders WHERE id = ?", args: [input.id] });
+    if (prior.rows.length) return input.id;
+    const door = await getDoor(input.doorId, tx);
     if (!door || door.sample || !orderOptions(door.size).includes(input.size)
       || !orderOptions(door.opening).includes(input.opening)) {
-      database.exec("ROLLBACK");
       return;
     }
     const unitPrice = input.fulfillment === "pickup" ? door.pickupPrice ?? door.price : door.price;
     const quotedTotal = unitPrice * input.quantity;
-    if (!Number.isSafeInteger(quotedTotal)) {
-      database.exec("ROLLBACK");
-      return;
-    }
+    if (!Number.isSafeInteger(quotedTotal)) return;
     const order: Order = {
       id: input.id,
       reference: `BG-${randomBytes(8).toString("hex").toUpperCase()}`,
@@ -66,23 +55,19 @@ export function createOrder(input: NewOrder) {
       customer: input.customer,
       quotedTotal,
     };
-    database.prepare("INSERT INTO orders (id, reference, created_at, status, record) VALUES (?, ?, ?, ?, ?)")
-      .run(order.id, order.reference, order.createdAt, order.status, JSON.stringify(order));
-    database.exec("COMMIT");
+    await tx.execute({ sql: "INSERT INTO orders (id, reference, created_at, status, record) VALUES (?, ?, ?, ?, ?)",
+      args: [order.id, order.reference, order.createdAt, order.status, JSON.stringify(order)] });
     return order.id;
-  } catch (error) {
-    database.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
 
-export function updateOrder(order: Order, previous: Order) {
+export async function updateOrder(order: Order, previous: Order) {
   const reference = order.payment?.transaction;
   const transaction = reference && order.payment?.method === "qpay" ? `qpay:${reference}` : reference ?? null;
-  return db().prepare(`
+  return (await (await db()).execute(`
     UPDATE orders SET status = ?, record = ?, bank_transaction = ?
     WHERE id = ? AND record = ? AND NOT EXISTS (
       SELECT 1 FROM orders WHERE bank_transaction = ? AND id <> ?
     )
-  `).run(order.status, JSON.stringify(order), transaction, order.id, JSON.stringify(previous), transaction, order.id).changes;
+  `, [order.status, JSON.stringify(order), transaction, order.id, JSON.stringify(previous), transaction, order.id])).rowsAffected;
 }

@@ -8,7 +8,7 @@ import { DoorGallery } from "../gallery";
 
 async function DoorDetails({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const door = getDoor(id);
+  const door = await getDoor(id);
   if (!door) notFound();
 
   return <main className="wrap detail">

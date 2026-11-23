@@ -14,7 +14,7 @@ const services = [
 
 async function DoorCatalog() {
   await connection();
-  return <Catalog doors={listDoors()} />;
+  return <Catalog doors={await listDoors()} />;
 }
 
 export default function Home() {

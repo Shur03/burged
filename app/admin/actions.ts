@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isAdmin, signIn, signOut } from "@/lib/admin";
-import { categories, maxDoorPhotoBytes, maxDoorPhotos, type Category, type Door } from "@/lib/doors";
-import { deleteDoor, saveDoor } from "@/lib/store";
+import { categories, compactDoorPhotoBytes, maxDoorPhotoBytes, maxDoorPhotos, type Category, type Door } from "@/lib/doors";
+import { compactDoorUploads, deleteDoor, saveDoor } from "@/lib/store";
 
 export async function login(_: string, data: FormData) {
   if (!await signIn(String(data.get("password") ?? ""))) return "Нууц үг буруу байна.";
@@ -51,6 +51,7 @@ export async function submitDoor(id: string | null, _: string, data: FormData) {
   if (files.length > maxDoorPhotos) return `Нэг бараанд ${maxDoorPhotos} хүртэл зураг оруулна уу.`;
   const uploads: { bytes: Buffer; mime: string }[] = [];
   for (const file of files) {
+    if (compactDoorUploads() && file.size > compactDoorPhotoBytes) return "Зургаа дахин сонгож, шахаж дууссаны дараа хадгална уу.";
     if (file.size > maxDoorPhotoBytes) return "Зураг тус бүр 4 МБ хүртэл хэмжээтэй байна.";
     const bytes = Buffer.from(await file.arrayBuffer());
     const mime = photoMime(bytes);
@@ -67,7 +68,7 @@ export async function submitDoor(id: string | null, _: string, data: FormData) {
     sample: data.get("sample") === "on",
   };
   const removals = new Set(data.getAll("removePhoto").filter((value) => typeof value === "string"));
-  const result = saveDoor(door, Boolean(id), uploads, removals);
+  const result = await saveDoor(door, Boolean(id), uploads, removals);
   if (result === "missing") return "Энэ бараа каталогоос устсан байна.";
   if (result === "too-many-photos") return `Нэг бараанд ${maxDoorPhotos} хүртэл зураг хадгалах боломжтой.`;
   revalidatePath("/");
@@ -77,7 +78,7 @@ export async function submitDoor(id: string | null, _: string, data: FormData) {
 
 export async function removeDoor(id: string) {
   if (!await isAdmin()) redirect("/admin");
-  deleteDoor(id);
+  await deleteDoor(id);
   revalidatePath("/");
   revalidatePath(`/doors/${id}`);
   redirect("/admin?status=deleted");

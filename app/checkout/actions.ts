@@ -23,7 +23,7 @@ export async function submitOrder(id: string, doorId: string, _: CheckoutState, 
   if (fulfillment === "delivery" && (!address || address.length > 240)) return fail("Хүргэлтийн хаягаа 240 тэмдэгтэд багтааж оруулна уу.");
   if (!size || !opening || size.length > 100 || opening.length > 100) return fail("Хэмжээ болон онгойх чиглэлээ сонгоно уу.");
 
-  const orderId = createOrder({
+  const orderId = await createOrder({
     id, doorId, size, opening, quantity, fulfillment,
     customer: { name, phone, address: fulfillment === "delivery" ? address : "" },
   });

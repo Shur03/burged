@@ -16,7 +16,7 @@ export async function reconcileQPayOrder(order: Order) {
   const transaction = await checkQPayPayment(order.payment.invoice.id, order.payment.total);
   if (!transaction) return false;
 
-  const updated = updateOrder({
+  const updated = await updateOrder({
     ...order,
     status: "paid",
     payment: { ...order.payment, transaction, paidAt: new Date().toISOString() },
@@ -26,7 +26,7 @@ export async function reconcileQPayOrder(order: Order) {
     return true;
   }
   // A duplicate callback can finish the transition while this check is in flight.
-  const current = getOrder(order.id);
+  const current = await getOrder(order.id);
   return current?.payment?.transaction === transaction
     && (current.status === "paid" || current.status === "completed");
 }

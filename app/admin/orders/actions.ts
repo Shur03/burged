@@ -10,7 +10,7 @@ import { reconcileQPayOrder, refreshOrderPages } from "@/lib/qpay-orders";
 
 export async function advanceOrder(id: string, expected: OrderStatus, _: string, form: FormData) {
   if (!await isAdmin()) redirect("/admin");
-  const order = getOrder(id);
+  const order = await getOrder(id);
   if (!order) return "Захиалга олдсонгүй.";
   if (order.status !== expected) return "Захиалгын төлөв өөрчлөгдсөн байна. Хуудсаа шинэчилнэ үү.";
 
@@ -25,18 +25,18 @@ export async function advanceOrder(id: string, expected: OrderStatus, _: string,
       const payment: QPayPayment = { method: "qpay", total, callbackToken: randomBytes(24).toString("hex") };
       const reserved = { ...order, payment };
       // Reserve this order before calling QPay, so a second approval cannot create another invoice.
-      if (!updateOrder(reserved, order)) return "Захиалгын төлөв өөрчлөгдсөн байна. Хуудсаа шинэчилнэ үү.";
+      if (!await updateOrder(reserved, order)) return "Захиалгын төлөв өөрчлөгдсөн байна. Хуудсаа шинэчилнэ үү.";
       const result = await createQPayInvoice(order.reference, total, payment.callbackToken);
       if ("error" in result) {
         if (result.error === "rejected") {
-          updateOrder(order, reserved);
+          await updateOrder(order, reserved);
           return "QPay нэхэмжлэх үүсгэж чадсангүй. Sandbox тохиргоогоо шалгаад дахин оролдоно уу.";
         }
         refreshOrderPages(id);
         return "QPay нэхэмжлэх үүссэн эсэх тодорхойгүй байна. Захиалгын дугаараар QPay дээр шалгана уу.";
       }
       const awaiting: Order = { ...reserved, status: "awaiting_payment", payment: { ...payment, invoice: result.invoice } };
-      if (!updateOrder(awaiting, reserved)) return "QPay нэхэмжлэхийг захиалгад холбож чадсангүй.";
+      if (!await updateOrder(awaiting, reserved)) return "QPay нэхэмжлэхийг захиалгад холбож чадсангүй.";
       refreshOrderPages(id);
       redirect(`/admin/orders/${id}?updated=1`);
     }
@@ -74,7 +74,7 @@ export async function advanceOrder(id: string, expected: OrderStatus, _: string,
     return "Энэ үйлдлийг одоогийн төлөвт хийх боломжгүй.";
   }
 
-  if (!updateOrder(next, order)) {
+  if (!await updateOrder(next, order)) {
     return "Захиалгын төлөв өөрчлөгдсөн эсвэл банкны гүйлгээний дугаар бүртгэгдсэн байна.";
   }
   refreshOrderPages(id);

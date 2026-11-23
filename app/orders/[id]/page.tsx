@@ -23,7 +23,7 @@ const statusMessages: Record<OrderStatus, string> = {
 
 async function Receipt({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const order = getOrder(id);
+  const order = await getOrder(id);
   if (!order) notFound();
   const payment = order.payment;
   const qpay = payment?.method === "qpay" ? payment.invoice : undefined;

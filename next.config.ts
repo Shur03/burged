@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   experimental: {
     agentFeedback: true,
-    serverActions: { bodySizeLimit: "33mb" },
+    serverActions: { bodySizeLimit: process.env.VERCEL === "1" ? "4mb" : "33mb" },
   },
   cacheComponents: true,
   partialPrefetching: true,

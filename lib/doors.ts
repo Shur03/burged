@@ -25,6 +25,8 @@ export type Door = {
 
 export const maxDoorPhotos = 8;
 export const maxDoorPhotoBytes = 4 * 1024 * 1024;
+export const compactDoorPhotoBytes = 384 * 1024;
+export const maxDoorPhotoSourceBytes = 24 * 1024 * 1024;
 
 export function doorPhotos(door: Pick<Door, "image" | "images">) {
   return door.images ?? (door.image ? [door.image] : []);
