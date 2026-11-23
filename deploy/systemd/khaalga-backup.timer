@@ -1,0 +1,10 @@
+[Unit]
+Description=Back up Burged Khaalga daily
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 Asia/Ulaanbaatar
+Persistent=true
+Unit=khaalga-backup.service
+
+[Install]
+WantedBy=timers.target

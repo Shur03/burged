@@ -1,0 +1,27 @@
+[Unit]
+Description=Burged Khaalga Next.js
+After=network.target
+
+[Service]
+Type=simple
+User=khaalga
+Group=khaalga
+WorkingDirectory=/opt/khaalga
+EnvironmentFile=/etc/khaalga/app.env
+Environment=NODE_ENV=production
+Environment=DOOR_DATA_DIR=/var/lib/khaalga
+ExecStart=/usr/bin/node /opt/khaalga/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3000
+StateDirectory=khaalga
+StateDirectoryMode=0750
+UMask=0077
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/opt/khaalga/.next/cache
+InaccessiblePaths=-/var/backups/khaalga
+
+[Install]
+WantedBy=multi-user.target

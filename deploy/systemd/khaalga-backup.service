@@ -1,0 +1,16 @@
+[Unit]
+Description=Validated SQLite backup for Burged Khaalga
+
+[Service]
+Type=oneshot
+User=khaalga
+Group=khaalga
+WorkingDirectory=/opt/khaalga
+ExecStart=/usr/bin/node /opt/khaalga/scripts/sqlite-backup.mjs backup /var/lib/khaalga/doors.sqlite /var/backups/khaalga 30
+TimeoutStartSec=10min
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/backups/khaalga
