@@ -34,6 +34,12 @@ export type Order = {
   payment?: BankPayment | QPayPayment;
 };
 
+export type OrderSummary = Pick<Order, "id" | "reference" | "createdAt" | "status"> & { title: string };
+
+export function normalizeOrderPhone(phone: string) {
+  return phone.replace(/[\s-]/g, "").replace(/^\+976(?=\d{8}$)/, "");
+}
+
 export function formatOrderDate(date: string) {
   return new Intl.DateTimeFormat("mn-MN", {
     dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Ulaanbaatar",

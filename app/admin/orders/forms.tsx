@@ -36,7 +36,7 @@ export function OrderActionForm({ id, status, operation, total, qpay = false }: 
     </label>}
     {operation === "mark-paid" && <label>Банкны гүйлгээний дугаар
       <input name="transaction" required maxLength={80} />
-      <small>Дансны орлогын дүн болон гүйлгээний утгыг тулгаж шалгана.</small>
+      <small>Дансны орлогын дүн болон гүйлгээний утгад бичсэн утасны дугаарыг захиалгатай тулгана.</small>
     </label>}
     {error && <p className="form-error" role="alert">{error}</p>}
     <button type="submit" className={`button ${operation === "cancel" ? "outline" : "primary"}`} disabled={pending}>

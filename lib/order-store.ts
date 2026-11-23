@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import type { BankAccount, Order } from "./orders";
+import type { BankAccount, Order, OrderSummary } from "./orders";
 import { db, getDoor, writeDatabase } from "./store";
 
 export function bankAccount(): BankAccount | undefined {
@@ -12,6 +12,32 @@ export function bankAccount(): BankAccount | undefined {
 export async function getOrder(id: string) {
   const { rows: [row] } = await (await db()).execute("SELECT record FROM orders WHERE id = ?", [id]);
   return row ? JSON.parse(String(row.record)) as Order : undefined;
+}
+
+export async function findOrderId(reference: string, phone: string) {
+  const { rows: [row] } = await (await db()).execute(
+    "SELECT id FROM orders WHERE reference = ? AND json_extract(record, '$.customer.phone') = ?",
+    [reference, phone],
+  );
+  return row ? String(row.id) : undefined;
+}
+
+export async function listRememberedOrders(phone: string, ids: string[]): Promise<OrderSummary[]> {
+  if (!ids.length) return [];
+  const { rows } = await (await db()).execute(`
+    SELECT id, reference, created_at, status, json_extract(record, '$.door.title') AS title
+    FROM orders
+    WHERE id IN (${ids.map(() => "?").join(", ")})
+      AND json_extract(record, '$.customer.phone') = ?
+    ORDER BY created_at DESC, rowid DESC
+  `, [...ids, phone]);
+  return rows.map((row) => ({
+    id: String(row.id),
+    reference: String(row.reference),
+    createdAt: String(row.created_at),
+    status: row.status as Order["status"],
+    title: String(row.title),
+  }));
 }
 
 export async function getOrderByQPayCallback(token: string) {

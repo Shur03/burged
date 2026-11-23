@@ -7,6 +7,8 @@ import { currency } from "@/lib/doors";
 import { getOrder } from "@/lib/order-store";
 import { fulfillmentLabels, orderLabels, type OrderStatus } from "@/lib/orders";
 import { Footer, Header } from "../../ui";
+import { rememberReceipt } from "../actions";
+import { CopyOrder } from "../copy-order";
 import { RefreshOrder } from "../refresh";
 
 export const metadata: Metadata = {
@@ -15,7 +17,7 @@ export const metadata: Metadata = {
 
 const statusMessages: Record<OrderStatus, string> = {
   new: "Захиалгыг хүлээн авлаа. Дэлгүүр утсаар холбогдож, захиалга болон эцсийн дүнг баталгаажуулна.",
-  awaiting_payment: "Доорх дүнг шилжүүлж, гүйлгээний утгад захиалгын дугаараа бичнэ үү.",
+  awaiting_payment: "Доорх дүнг шилжүүлж, гүйлгээний утгад захиалга өгөхдөө бүртгүүлсэн утасны дугаараа бичнэ үү.",
   paid: "Таны төлбөр баталгаажлаа.",
   completed: "Захиалга биелсэн байна.",
   cancelled: "Захиалга цуцлагдсан.",
@@ -37,7 +39,7 @@ async function Receipt({ params }: { params: Promise<{ id: string }> }) {
       <span className={`order-status status-${order.status}`}>{orderLabels[order.status]}</span>
       <p className="order-message">{awaiting && qpay ? "QR код уншуулах эсвэл банкны апп-аараа төлнө үү." : statusMessages[order.status]}</p>
       <dl className="dimensions order-facts">
-        <div><dt>Захиалгын дугаар</dt><dd>{order.reference}</dd></div>
+        <div><dt>Захиалгын код</dt><dd>{order.reference}</dd></div>
         <div><dt>Сонголт</dt><dd>{order.door.size} · {order.door.opening} · {order.quantity} ш</dd></div>
         <div><dt>Авах хэлбэр</dt><dd>{fulfillmentLabels[order.fulfillment]}</dd></div>
         <div><dt>{payment && order.status !== "new" ? "Баталгаажсан дүн" : "Урьдчилсан дүн"}</dt><dd>{currency(order.status === "new" ? order.quotedTotal : payment?.total ?? order.quotedTotal)}</dd></div>
@@ -56,10 +58,14 @@ async function Receipt({ params }: { params: Promise<{ id: string }> }) {
           {payment.bank.name && <div><dt>Банк</dt><dd>{payment.bank.name}</dd></div>}
           <div><dt>Дансны дугаар</dt><dd>{payment.bank.account}</dd></div>
           {payment.bank.holder && <div><dt>Хүлээн авагч</dt><dd>{payment.bank.holder}</dd></div>}
-          <div><dt>Гүйлгээний утга</dt><dd>{order.reference}</dd></div>
+          <div><dt>Гүйлгээний утга</dt><dd>{order.customer.phone}</dd></div>
         </dl>
       </section>}
-      <p className="order-note">Захиалгын төлөвөө дахин харахын тулд энэ хуудасны холбоосыг хадгалаарай.</p>
+      <CopyOrder reference={order.reference} path={`/orders/${order.id}`} />
+      <form action={rememberReceipt.bind(null, order.id)}>
+        <button className="text-button order-lookup-link" type="submit">Захиалга шалгах</button>
+      </form>
+      <p className="order-note">Энэ хөтөч дээр дараа нь утасны дугаараа оруулж төлөвөө хараарай. Өөр хөтөч дээр захиалгын кодоо ашиглана.</p>
     </section>
   </main>;
 }

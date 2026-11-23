@@ -35,7 +35,10 @@ export function doorPhotos(door: Pick<Door, "image" | "images">) {
 export const shop = {
   phone: "99651919",
   secondPhone: "88181894",
-  address: "100 айл, 9-р дэлгүүрийн автобусны буудал орчим",
+  email: "haalgaburged@gmail.com",
+  facebook: "https://www.facebook.com/share/1QoB8n327e/?mibextid=wwXIfr",
+  mapsUrl: "https://maps.app.goo.gl/hi6UT7VaEwi5LbT66?g_st=com.microsoft.skype.teams.extshare",
+  address: "100 айл, 9-р дэлгүүрийн автобусны буудлын эсрэг талд, 9 хишиг барилгын материалын дэлгүүрийн 2 давхарт 2-7",
 };
 
 export const currency = (amount: number) => `${new Intl.NumberFormat("en-US").format(amount).replaceAll(",", " ")} ₮`;

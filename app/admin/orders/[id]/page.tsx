@@ -40,7 +40,7 @@ async function OrderDetails({ params, searchParams }: Props) {
         <div><dt>Утас</dt><dd><a href={phoneLink(order.customer.phone)}>{order.customer.phone}</a></dd></div>
         <div><dt>Сонголт</dt><dd>{order.door.size} · {order.door.opening} · {order.quantity} ш</dd></div>
         <div><dt>Авах хэлбэр</dt><dd>{fulfillmentLabels[order.fulfillment]}</dd></div>
-        {order.customer.address && <div><dt>Хүргэлтийн хаяг</dt><dd>{order.customer.address}</dd></div>}
+        {order.customer.address && <div><dt>{order.fulfillment === "delivery" ? "Хүргэлтийн хаяг" : "Хаяг"}</dt><dd>{order.customer.address}</dd></div>}
         <div><dt>Урьдчилсан дүн</dt><dd>{currency(order.quotedTotal)}</dd></div>
         {order.payment && status !== "new" && <div><dt>Баталгаажсан дүн</dt><dd>{currency(order.payment.total)}</dd></div>}
         {qpay?.invoice && <div><dt>QPay sandbox нэхэмжлэх</dt><dd>{qpay.invoice.id}</dd></div>}
